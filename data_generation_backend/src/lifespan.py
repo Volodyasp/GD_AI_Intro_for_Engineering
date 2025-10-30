@@ -5,7 +5,7 @@ from fastapi import FastAPI
 logger = logging.getLogger(__name__)
 
 
-def get_lifespan():
+def get_lifespan(app: FastAPI):
     pass
     yield
     pass

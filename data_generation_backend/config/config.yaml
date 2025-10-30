@@ -1,0 +1,10 @@
+vertex_ai:
+  models:
+    generate_data:
+      model_name: "gemini-2.5-flash"
+      generation_config:
+        temperature: 0.0
+        response_mime_type: "application/json"
+        thinking_config:
+          thinking_budget: 128
+          include_thoughts: False

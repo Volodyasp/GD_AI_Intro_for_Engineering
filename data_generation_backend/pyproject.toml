@@ -1,3 +1,6 @@
+[tool.poetry]
+package-mode = false
+
 [project]
 name = "data-generation-backend"
 version = "0.1.0"
@@ -10,7 +13,10 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi (>=0.120.2,<0.121.0)",
     "google-cloud-aiplatform (>=1.123.0,<2.0.0)",
-    "pydantic (>=2.12.3,<3.0.0)"
+    "pydantic (>=2.12.3,<3.0.0)",
+    "uvicorn (>=0.38.0,<0.39.0)",
+    "envyaml (>=1.10.211231,<2.0.0)",
+    "python-multipart (>=0.0.20,<0.0.21)"
 ]
 
 

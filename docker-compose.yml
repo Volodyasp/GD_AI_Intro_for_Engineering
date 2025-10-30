@@ -1,6 +1,16 @@
 version: "3"
 
 services:
+  data-generation-backend:
+    container_name: data-generation-backend
+    build:
+      context: ./
+      dockerfile: Dockerfile.data-generation-backend
+    image: data-generation-backend
+    working_dir: /app/
+    ports:
+      - "8600:8600"
+
   data-generation-frontend:
     container_name: data-generation-frontend
     build:

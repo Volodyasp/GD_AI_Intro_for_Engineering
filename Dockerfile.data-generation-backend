@@ -5,11 +5,13 @@ WORKDIR /app
 
 COPY ./data_generation_backend/ ./
 
-RUN pip install --update pip && \
+RUN pip install --upgrade pip && \
     pip install "poetry>=2.0,<3.0" && \
     poetry config virtualenvs.create false && \
     poetry install
 
-ENV PYTHONPATH /app/src
+ENV PYTHONPATH /app/src:/app/config
 
-ENTRYPOINT ["top", "-b"]
+CMD ["uvicorn", "src.main:app", "--workers", "4", "--host", "0.0.0.0", "--port", "8600"]
+
+EXPOSE 8600
