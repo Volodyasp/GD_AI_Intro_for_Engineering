@@ -10,5 +10,6 @@ RUN pip install --update pip && \
     poetry config virtualenvs.create false && \
     poetry install
 
+ENV PYTHONPATH /app/src
 
 ENTRYPOINT ["top", "-b"]

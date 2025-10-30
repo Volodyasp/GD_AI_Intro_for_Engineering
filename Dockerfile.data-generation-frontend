@@ -1,4 +1,5 @@
 FROM python:3.11-slim-bookworm
+LABEL authors="vladimirsuponin"
 
 # Set up the work DIR for the work
 WORKDIR /app
