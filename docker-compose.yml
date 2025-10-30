@@ -1,0 +1,12 @@
+version: "3"
+
+services:
+  data-generation-frontend:
+    container_name: data-generation-frontend
+    build:
+      context: ./
+      dockerfile: Dockerfile.data-generation-frontend
+    image: data-generation-frontend
+    working_dir: /app/
+    ports:
+      - "8501:8501"

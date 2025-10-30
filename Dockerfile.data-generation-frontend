@@ -1,0 +1,18 @@
+FROM python:3.11-slim-bookworm
+
+# Set up the work DIR for the work
+WORKDIR /app
+
+# Copping and installing the poetry requirements
+COPY ./data_generation_frontend/poetry.lock ./
+COPY ./data_generation_frontend/pyproject.toml ./
+COPY ./data_generation_frontend/ ./
+
+RUN pip install --upgrade pip && \
+    pip install "poetry>=2.0,<3.0" && \
+    poetry config virtualenvs.create false && \
+    poetry install --only main
+
+CMD ["streamlit", "run", "src/main.py", "--server.address=0.0.0.0", "--server.port=8501"]
+
+EXPOSE 8501
