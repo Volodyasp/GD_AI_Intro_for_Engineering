@@ -11,7 +11,7 @@ COPY ./data_generation_frontend/ ./
 RUN pip install --upgrade pip && \
     pip install "poetry>=2.0,<3.0" && \
     poetry config virtualenvs.create false && \
-    poetry install --only main
+    poetry install
 
 CMD ["streamlit", "run", "src/main.py", "--server.address=0.0.0.0", "--server.port=8501"]
 
