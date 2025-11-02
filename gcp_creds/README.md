@@ -1,0 +1,1 @@
+Store GCP credential files in this directory. .json files in this directory will included in the .gitignore so they aren't included in version control

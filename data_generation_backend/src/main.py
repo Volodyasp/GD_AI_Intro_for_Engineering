@@ -2,6 +2,7 @@ import os
 import sys
 import importlib
 import logging
+import vertexai
 from fastapi import FastAPI
 from fastapi.routing import APIRouter
 from pathlib import Path
@@ -85,3 +86,4 @@ sys.path.append(apps_dir)
 
 print(f"Starting router import: {curr_dir=}, {apps_dir=}")
 import_routers(app, apps_dir)
+vertexai.init(project=os.getenv("GOOGLE_CLOUD_PROJECT"), location=os.getenv('LOCATION', 'us-central1'))

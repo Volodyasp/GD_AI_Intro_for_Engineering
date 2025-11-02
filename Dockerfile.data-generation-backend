@@ -12,6 +12,10 @@ RUN pip install --upgrade pip && \
 
 ENV PYTHONPATH /app/src:/app/config
 
+# Handling gcp creds
+COPY ./gcp_creds/*.json /home/docker/.config/gcloud/
+
+
 CMD ["uvicorn", "src.main:app", "--workers", "4", "--host", "0.0.0.0", "--port", "8600"]
 
 EXPOSE 8600
