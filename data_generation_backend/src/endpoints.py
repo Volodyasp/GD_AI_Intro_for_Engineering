@@ -1,45 +1,36 @@
 import logging
-from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Form
-from pathlib import Path
+from typing import Optional
 
-#from base import GenerateDataRequest
-from generation_engine.pipeline import run_generate_data_flow
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form
+
 from generation_engine.base import GenerateDataOutput, GenerateDataInput
-
+from generation_engine.pipeline import run_generate_data_flow
+from utils.file_processing import read_data_schema_file
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/data-generation-engine")
-
-
-ALLOWED_EXT = {".sql", ".ddl", ".txt"}
 
 
 @router.post("/api/generate_data")
 async def generate_data(
     user_prompt: str = Form(...),
     temperature: float = Form(0.0),
-    #file_schema: UploadFile | None = File(default=None),
+    file_schema: Optional[UploadFile] | str = File(default=None),
 ):
     try:
-        ddl_content = None
-        file_schema = None
-
-        if file_schema and file_schema.filename:
-            ext = Path(file_schema.filename).suffix.lower()
-            if ext not in ALLOWED_EXT:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"File extension '{ext}' not allowed. Allowed are: {ALLOWED_EXT}"
-                )
-
-            ddl_content_bytes = await file_schema.read()
-            ddl_content = ddl_content_bytes.decode('utf-8')
-
+        try:
+            ddl_content = read_data_schema_file(file_schema)
+        except TypeError as e:
+            raise HTTPException(
+                status_code=400, detail=f"Wrong type of the schema file: {e}"
+            )
 
         flow_input: GenerateDataInput = GenerateDataInput(
             user_prompt=user_prompt,
             ddl_schema=ddl_content,
-            generation_config={"temperature": temperature} if temperature is not None else None,
+            generation_config=(
+                {"temperature": temperature} if temperature is not None else None
+            ),
         )
         response: GenerateDataOutput = await run_generate_data_flow(flow_input)
         return response
