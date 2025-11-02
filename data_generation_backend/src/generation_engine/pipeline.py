@@ -18,7 +18,7 @@ async def run_generate_data_flow(request: GenerateDataInput) -> GenerateDataOutp
     user_generation_config = request.model_config if request.model_config else {}
 
     generation_config: GenerationConfig = GenerationConfig.from_dict({
-        **CONFIG["vertex_ai"]["models"]["generate_data"],
+        **CONFIG["vertex_ai"]["models"]["generate_data"]["generation_config"],
         **user_generation_config
     })
     llm = GenerativeModel(

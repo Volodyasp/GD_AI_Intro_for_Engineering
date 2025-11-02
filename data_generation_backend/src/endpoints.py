@@ -18,10 +18,11 @@ ALLOWED_EXT = {".sql", ".ddl", ".txt"}
 async def generate_data(
     user_prompt: str = Form(...),
     temperature: float = Form(0.0),
-    file_schema: UploadFile | None = File(default=None), # Made typing more explicit
+    #file_schema: UploadFile | None = File(default=None),
 ):
     try:
         ddl_content = None
+        file_schema = None
 
         if file_schema and file_schema.filename:
             ext = Path(file_schema.filename).suffix.lower()
@@ -40,7 +41,7 @@ async def generate_data(
             ddl_schema=ddl_content,
             generation_config={"temperature": temperature} if temperature is not None else None,
         )
-        response: GenerateDataOutput = run_generate_data_flow(flow_input)
+        response: GenerateDataOutput = await run_generate_data_flow(flow_input)
         return response
 
     except HTTPException as e:
