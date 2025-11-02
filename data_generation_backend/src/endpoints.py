@@ -15,11 +15,11 @@ router = APIRouter(prefix="/data-generation-engine")
 async def generate_data(
     user_prompt: str = Form(...),
     temperature: float = Form(0.0),
-    file_schema: Optional[UploadFile] | str = File(default=None),
+    file_schema: Optional[UploadFile] = File(default=None),
 ):
     try:
         try:
-            ddl_content = read_data_schema_file(file_schema)
+            ddl_content = await read_data_schema_file(file_schema)
         except TypeError as e:
             raise HTTPException(
                 status_code=400, detail=f"Wrong type of the schema file: {e}"

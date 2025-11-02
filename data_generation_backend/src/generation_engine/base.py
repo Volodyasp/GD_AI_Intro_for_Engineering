@@ -5,7 +5,7 @@ from fastapi import UploadFile
 
 class GenerateDataInput(BaseModel):
     user_prompt: str
-    ddl_schema: Optional[UploadFile] = None
+    ddl_schema: Optional[str] = None
     generation_config: Optional[Dict] = None
 
 

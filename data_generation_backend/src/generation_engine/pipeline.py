@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 async def run_generate_data_flow(request: GenerateDataInput) -> GenerateDataOutput:
     user_prompt: str = request.user_prompt
-    ddl_schema: str = await read_data_schema_file(request.ddl_schema)
+    ddl_schema: str = request.ddl_schema
     user_generation_config = request.model_config if request.model_config else {}
 
     generation_config: GenerationConfig = GenerationConfig.from_dict({
