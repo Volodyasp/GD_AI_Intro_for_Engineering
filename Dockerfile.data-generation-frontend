@@ -5,8 +5,6 @@ LABEL authors="vladimirsuponin"
 WORKDIR /app
 
 # Copping and installing the poetry requirements
-COPY ./data_generation_frontend/poetry.lock ./
-COPY ./data_generation_frontend/pyproject.toml ./
 COPY ./data_generation_frontend/ ./
 
 RUN pip install --upgrade pip && \

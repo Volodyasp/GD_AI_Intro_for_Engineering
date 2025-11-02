@@ -18,5 +18,8 @@ services:
       dockerfile: Dockerfile.data-generation-frontend
     image: data-generation-frontend
     working_dir: /app/
+    environment:
+      - BACKEND_URL=http://data-generation-backend:8600
+      - LOADER_STYLE=/app/gifs/9ef6c06a26ed1378119a29e3a3586bb2.gif
     ports:
       - "8501:8501"
