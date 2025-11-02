@@ -8,6 +8,10 @@ from fastapi.routing import APIRouter
 from pathlib import Path
 
 from lifespan import get_lifespan
+from logging_config import setup_logging
+
+
+setup_logging()
 
 
 logger = logging.getLogger(__name__)
