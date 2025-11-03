@@ -12,7 +12,8 @@ import streamlit as st
 # ---------- Config ----------
 BACKEND_URL = os.getenv("BACKEND_URL", "http://data-generation-backend:8600")
 GENERATE_ENDPOINT = f"{BACKEND_URL}/data-generation-engine/api/generate_data"
-LOADER_STYLE = os.getenv("LOADER_STYLE", "bike")  # "bike" | "runner"
+APPLY_CHANGE_ENDPOINT = f"{BACKEND_URL}/data-generation-engine/api/data-apply-change"
+LOADER_STYLE = os.getenv("LOADER_STYLE", "bike")  # "bike" | "runner" | path/URL/data-URI to .gif
 
 st.set_page_config(
     page_title="Data Assistant",
@@ -55,6 +56,7 @@ def ensure_session_state():
     ss.setdefault("last_request", {})
     ss.setdefault("last_response", None)
     ss.setdefault("show_backend_raw", False)
+    ss.setdefault("apply_prompt", "")
 
 ensure_session_state()
 
@@ -78,58 +80,89 @@ def _extract_json_object(s: str) -> str:
 def _json_relax(s: str) -> str:
     return re.sub(r",\s*([}\]])", r"\1", s)
 
-def build_preview_from_backend(resp_dict: dict) -> bool:
+def _load_payload_to_dataset(payload, selected_table: Optional[str] = None) -> Optional[Dict[str, List[dict]]]:
+    """
+    Accepts:
+      - dict of {table: [rows]}
+      - list of rows (applies to selected_table)
+    Returns:
+      dict {table: [rows]} or None on failure.
+    """
+    data = payload
+    if isinstance(data, str):
+        try:
+            data = json.loads(_extract_json_object(data))
+        except json.JSONDecodeError:
+            try:
+                data = json.loads(_json_relax(_extract_json_object(data)))
+            except Exception:
+                return None
+
+    if isinstance(data, dict):
+        # assume dict-of-lists
+        mapped: Dict[str, List[dict]] = {}
+        for k, v in data.items():
+            if isinstance(v, list):
+                mapped[k] = v
+        return mapped if mapped else None
+
+    if isinstance(data, list) and selected_table:
+        return {selected_table: data}
+
+    return None
+
+def build_preview_from_backend(resp_dict: dict, selected_table: Optional[str] = None) -> bool:
+    """
+    Parses backend response into tables/dataframes.
+    If it contains the whole dataset -> replace all tables.
+    If it contains only the selected table -> replace that table.
+    """
     payload = resp_dict.get("generated_text")
     if payload is None:
         return False
 
-    if isinstance(payload, dict):
-        dataset = payload
-    else:
-        s = _extract_json_object(str(payload))
-        try:
-            dataset = json.loads(s)
-        except json.JSONDecodeError:
-            try:
-                dataset = json.loads(_json_relax(s))
-            except Exception:
-                return False
-
-    if not isinstance(dataset, dict):
+    dataset = _load_payload_to_dataset(payload, selected_table=selected_table)
+    if dataset is None:
         return False
 
-    tables = []
-    dataframes: Dict[str, pd.DataFrame] = {}
-    for name, rows in dataset.items():
-        if isinstance(rows, list):
+    # Replace entire set if multiple tables; otherwise patch single table.
+    if len(dataset.keys()) > 1:
+        tables = []
+        dfs: Dict[str, pd.DataFrame] = {}
+        for name, rows in dataset.items():
             try:
-                df = pd.DataFrame(rows)
+                dfs[name] = pd.DataFrame(rows)
             except Exception:
-                df = pd.json_normalize(rows)
+                dfs[name] = pd.json_normalize(rows)
             tables.append(name)
-            dataframes[name] = df
+        st.session_state.tables = tables
+        st.session_state.dataframes = dfs
+        if "preview_table" not in st.session_state or st.session_state.preview_table not in tables:
+            st.session_state.preview_table = tables[0]
+        return True
+    else:
+        (name, rows), = dataset.items()
+        try:
+            df = pd.DataFrame(rows)
+        except Exception:
+            df = pd.json_normalize(rows)
+        st.session_state.dataframes[name] = df
+        if name not in st.session_state.tables:
+            st.session_state.tables.append(name)
+        if "preview_table" not in st.session_state or st.session_state.preview_table not in st.session_state.tables:
+            st.session_state.preview_table = name
+        return True
 
-    if not tables:
-        return False
-
-    st.session_state.tables = tables
-    st.session_state.dataframes = dataframes
-    if "preview_table" not in st.session_state or st.session_state.preview_table not in tables:
-        st.session_state.preview_table = tables[0]
-    return True
-
-# ---------- Emoji loader (bike/runner) ----------
+# ---------- Loader (GIF or emoji) ----------
 def render_activity_loader(style: str = "bike", width: int = 160):
     s = (style or "").strip()
 
     # Treat as GIF (path/URL/data-URI)
     if s.lower().endswith(".gif") or s.startswith(("http://", "https://", "file://", "data:", "/")):
         try:
-            # data URI or http(s): pass straight to <img> so the browser animates it
             if s.startswith(("http://", "https://", "data:")):
                 st.markdown(f'<img src="{s}" width="{width}">', unsafe_allow_html=True)
             else:
-                # local path (inside container)
                 p = s.replace("file://", "")
                 with open(p, "rb") as f:
                     b64 = base64.b64encode(f.read()).decode("ascii")
@@ -139,9 +172,7 @@ def render_activity_loader(style: str = "bike", width: int = 160):
             _render_emoji_loader("bike")
         return
 
-    # fallback emoji animation
     _render_emoji_loader("runner" if s.lower() == "runner" else "bike")
-
 
 def _render_emoji_loader(style: str = "bike"):
     emoji = "🚴‍♂️" if style == "bike" else "🏃‍♂️"
@@ -203,6 +234,7 @@ if nav == "Data Generation":
             step=10
         )
 
+    # Generate -> call backend and load dataset
     if st.button("Generate", type="primary", use_container_width=True):
         st.session_state.generation_params["temperature"] = float(temperature)
         st.session_state.generation_params["max_tokens"] = int(max_tokens)
@@ -263,7 +295,7 @@ if nav == "Data Generation":
         if st.session_state.show_backend_raw:
             st.json(st.session_state.last_response)
 
-    # Preview
+    # Preview + Apply change
     if st.session_state.tables:
         header_left, header_right = st.columns([3, 1])
         with header_left:
@@ -274,18 +306,46 @@ if nav == "Data Generation":
         df = st.session_state.dataframes.get(st.session_state.preview_table, pd.DataFrame())
         st.dataframe(df, use_container_width=True)
 
-        with st.form(key="quick_edit_form", clear_on_submit=False):
-            st.text_input("Enter quick edit instructions…", key="edit_instr", label_visibility="collapsed")
-            submit = st.form_submit_button("Submit")
-            if submit:
-                instr = (st.session_state.get("edit_instr") or "").strip()
-                if not instr:
-                    st.info("Please enter an instruction.")
+        # Apply change form for the selected table
+        with st.form(key="apply_change_form", clear_on_submit=False):
+            st.text_area("Describe the change to apply to the selected table", key="apply_prompt", height=80)
+            submitted = st.form_submit_button("Submit")
+            if submitted:
+                prompt = (st.session_state.get("apply_prompt") or "").strip()
+                if not prompt:
+                    st.info("Please enter a change prompt.")
                 else:
-                    st.toast(
-                        f"Applied edit to '{st.session_state.preview_table}': {instr}",
-                        icon=("🚴" if LOADER_STYLE == "bike" else "🏃"),
-                    )
+                    with st.status(f"Applying change to '{st.session_state.preview_table}'…", state="running", expanded=True) as status:
+                        render_activity_loader(LOADER_STYLE)
+                        try:
+                            # Send as simple form data; adapt if your backend expects JSON
+                            payload = {
+                                "table_name": st.session_state.preview_table,
+                                "user_prompt": prompt,
+                            }
+                            resp = requests.post(APPLY_CHANGE_ENDPOINT, data=payload, timeout=90)
+                            resp.raise_for_status()
+                            resp_json = resp.json()
+
+                            # Overwrite frontend dataset from the response
+                            ok = build_preview_from_backend(resp_json, selected_table=st.session_state.preview_table)
+                            if not ok:
+                                st.error("The apply-change response could not be parsed into rows.")
+                                status.update(label="Apply failed", state="error")
+                                st.stop()
+
+                            # Update the “backend raw” preview to reflect the latest response
+                            st.session_state.last_response = resp_json
+
+                            status.update(label="Change applied", state="complete", expanded=False)
+                            st.toast("Table updated", icon="🚴" if LOADER_STYLE == "bike" else "🏃")
+
+                        except requests.HTTPError as e:
+                            status.update(label=f"Backend error {e.response.status_code}", state="error")
+                            st.error(f"Backend returned {e.response.status_code}: {e.response.text[:600]}")
+                        except Exception as e:
+                            status.update(label="Request failed", state="error")
+                            st.error(f"Request failed: {e}")
 
 # ---------- Talk to your data ----------
 else:
