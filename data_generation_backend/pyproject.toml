@@ -16,7 +16,8 @@ dependencies = [
     "pydantic (>=2.12.3,<3.0.0)",
     "uvicorn (>=0.38.0,<0.39.0)",
     "envyaml (>=1.10.211231,<2.0.0)",
-    "python-multipart (>=0.0.20,<0.0.21)"
+    "python-multipart (>=0.0.20,<0.0.21)",
+    "redis (>=7.0.1,<8.0.0)"
 ]
 
 

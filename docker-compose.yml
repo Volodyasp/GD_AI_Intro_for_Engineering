@@ -23,3 +23,21 @@ services:
       - LOADER_STYLE=/app/gifs/9ef6c06a26ed1378119a29e3a3586bb2.gif
     ports:
       - "8501:8501"
+
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379" # Expose Redis port
