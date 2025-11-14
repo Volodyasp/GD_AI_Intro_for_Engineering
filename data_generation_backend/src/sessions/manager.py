@@ -16,8 +16,6 @@ class RedisSessionManager(Redis):
         self.REDIS_PASSWORD = os.getenv('REDIS_PASSWORD', '')
         self.REDIS_DB = int(os.getenv('REDIS_DB', 0))
 
-        self.initialize_pool()
-
     def initialize_pool(self):
         """
         Initializes the connection pool.

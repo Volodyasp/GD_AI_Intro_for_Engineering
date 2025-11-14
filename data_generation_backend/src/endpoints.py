@@ -6,6 +6,8 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Body, Requ
 
 from generation_engine.base import GenerateDataOutput, GenerateDataInput
 from generation_engine.pipeline import run_generate_data_flow
+from sessions.manager import RedisSessionManager, DBManagerDep
+from dependencies import SessionManagerDep
 from utils.file_processing import read_data_schema_file
 
 logger = logging.getLogger(__name__)
@@ -14,6 +16,8 @@ router = APIRouter(prefix="/data-generation-engine")
 
 @router.post("/api/generate_data")
 async def generate_data(
+    session_manager: SessionManagerDep,
+    db_manager: DBManagerDep,
     user_prompt: str = Form(...),
     temperature: float = Form(0.0),
     file_schema: Optional[UploadFile] = File(default=None),
