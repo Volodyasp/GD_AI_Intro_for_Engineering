@@ -6,8 +6,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Body, Requ
 
 from generation_engine.base import GenerateDataOutput, GenerateDataInput
 from generation_engine.pipeline import run_generate_data_flow
-from sessions.manager import RedisSessionManager, DBManagerDep
-from dependencies import SessionManagerDep
+from dependencies import SessionManagerDep, DBManagerDep
 from utils.file_processing import read_data_schema_file
 
 logger = logging.getLogger(__name__)
