@@ -1,139 +1,152 @@
 import logging
-from datetime import datetime
 from typing import Optional, List, Any, Dict
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Body, Request
+from pydantic import BaseModel
 
 from generation_engine.base import GenerateDataOutput, GenerateDataInput
-from generation_engine.pipeline import run_generate_data_flow
+from generation_engine.pipeline import (
+    run_generate_data_flow,
+    run_apply_change_flow,
+    run_natural_language_query_flow
+)
 from dependencies import SessionManagerDep, DBManagerDep
 from utils.file_processing import read_data_schema_file
 
 logger = logging.getLogger(__name__)
+
+# Note: Adjust the import path for your specific project structure if necessary
+# Currently assuming this file is imported by main.py via dynamic import
+
 router = APIRouter(prefix="/data-generation-engine")
 
 
+# --- Pydantic Models for JSON Payloads ---
+
+class ApplyChangeRequest(BaseModel):
+    table_name: str
+    user_prompt: str
+    temperature: Optional[float] = 0.2
+    # Optional: Pass current rows if the frontend holds the state
+    current_rows: Optional[List[Dict[str, Any]]] = None
+
+
+class NLQRequest(BaseModel):
+    user_prompt: str
+
+
+# --- Endpoints ---
+
 @router.post("/api/generate_data")
 async def generate_data(
-    session_manager: SessionManagerDep,
-    db_manager: DBManagerDep,
-    user_prompt: str = Form(...),
-    temperature: float = Form(0.0),
-    file_schema: Optional[UploadFile] = File(default=None),
+        session_manager: SessionManagerDep,
+        db_manager: DBManagerDep,
+        user_prompt: str = Form(...),
+        temperature: float = Form(0.0),
+        file_schema: Optional[UploadFile] = File(default=None),
 ):
+    """
+    Main entry point: Accepts DDL file + User Prompt -> Generates Data -> Inserts to DB.
+    """
     try:
-        try:
-            ddl_content = await read_data_schema_file(file_schema)
-        except TypeError as e:
-            raise HTTPException(
-                status_code=400, detail=f"Wrong type of the schema file: {e}"
-            )
+        # 1. Read Schema File
+        ddl_content = await read_data_schema_file(file_schema)
 
-        flow_input: GenerateDataInput = GenerateDataInput(
+        # Fallback: if no file, check if user pasted DDL in the prompt text
+        # (Basic heuristic: checks for CREATE TABLE)
+        if not ddl_content and "CREATE TABLE" in user_prompt.upper():
+            logger.info("No file uploaded, but DDL found in user prompt.")
+            # We assume the prompt is the DDL in this edge case, or mixed.
+            # Ideally, we'd want a separate text area for DDL, but this works for simple usage.
+            pass
+
+            # 2. Build Input Object
+        flow_input = GenerateDataInput(
             user_prompt=user_prompt,
             ddl_schema=ddl_content,
-            generation_config=(
-                {"temperature": temperature} if temperature is not None else None
-            ),
+            model_config={"temperature": temperature}
         )
+
+        # 3. Run Pipeline
         response: GenerateDataOutput = await run_generate_data_flow(flow_input, db_manager)
+
+        if not response.is_success:
+            # We return 500 but strictly speaking it could be 400 (Bad Request/Schema)
+            # Passing the error message allows frontend to display it.
+            raise HTTPException(status_code=500, detail=response.error_message)
+
         return response
 
     except HTTPException as e:
-        logger.error(f"HTTPException occurred during generate data: {e}", exc_info=e)
+        logger.error(f"HTTP Exception during generate_data: {e.detail}")
         raise e
-
     except Exception as e:
-        logger.error(f"Unhandled exception during generate data: {e}", exc_info=e)
+        logger.error(f"Unhandled exception during generate_data: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-
-
-
-
-
-### DUMMY DUMMY DUMMY
-from pydantic import BaseModel
-
-class ApplyChangeJSON(BaseModel):
-    table_name: Optional[str] = None
-    user_prompt: Optional[str] = None
-    temperature: Optional[float] = None
-    current_table: Optional[List[Dict[str, Any]]] = None
-    current_dataset: Optional[Dict[str, List[Dict[str, Any]]]] = None
-
-
-def _make_dummy_rows(table_name: str, user_prompt: str) -> List[Dict[str, Any]]:
-    """Produce a few demo rows that ‘reflect’ the prompt."""
-    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
-    return [
-        {
-            "id": 1,
-            "name": f"{table_name} Row A",
-            "prompt_applied": user_prompt,
-            "updated_at": now,
-        },
-        {
-            "id": 2,
-            "name": f"{table_name} Row B",
-            "prompt_applied": user_prompt,
-            "updated_at": now,
-        },
-        {
-            "id": 3,
-            "name": f"{table_name} Row C",
-            "prompt_applied": user_prompt,
-            "updated_at": now,
-        },
-    ]
 
 
 @router.post("/api/data-apply-change")
 async def data_apply_change(
-    request: Request,
-    # Form fields (so your current frontend `data=...` works)
-    table_name_form: Optional[str] = Form(None),
-    user_prompt_form: Optional[str] = Form(None),
-    temperature_form: Optional[float] = Form(None),
-    # Optional JSON body (so you can also send JSON if you want)
-    json_body: Optional[ApplyChangeJSON] = Body(None),
+        request: Request,
+        db_manager: DBManagerDep,
+        # Support Form Data (Streamlit default)
+        table_name: Optional[str] = Form(None),
+        user_prompt: Optional[str] = Form(None),
+        # Support JSON Body (Standard API usage)
+        payload: Optional[ApplyChangeRequest] = Body(None)
 ):
     """
-    Dummy endpoint that accepts EITHER form-data OR JSON.
-    Returns a payload compatible with the frontend's build_preview_from_backend():
-      { "generated_text": { <table_name>: [ {row}, ... ] } }
+    Modifies existing data based on user instructions.
     """
+    try:
+        # Resolve inputs from either Form or JSON Body
+        target_table = table_name or (payload.table_name if payload else None)
+        target_prompt = user_prompt or (payload.user_prompt if payload else None)
 
-    # Prefer form fields if present; otherwise use JSON body
-    table_name = table_name_form or (json_body.table_name if json_body else None)
-    user_prompt = user_prompt_form or (json_body.user_prompt if json_body else None)
-    temperature = temperature_form if temperature_form is not None else (
-        json_body.temperature if json_body else None
-    )
+        if not target_table or not target_prompt:
+            raise HTTPException(status_code=400, detail="Both 'table_name' and 'user_prompt' are required.")
 
-    if not table_name or not user_prompt:
-        raise HTTPException(status_code=400, detail="Both 'table_name' and 'user_prompt' are required.")
+        logger.info(f"Applying change to table '{target_table}' with prompt: {target_prompt}")
 
-    # Optional: access current table/dataset if you want to do real edits later
-    current_table = json_body.current_table if (json_body and json_body.current_table) else None
-    current_dataset = json_body.current_dataset if (json_body and json_body.current_dataset) else None
+        # 1. Fetch Current Data Context
+        # We limit the context to 50 rows to avoid token limits, assuming the user wants to see a preview of changes.
+        # In a production "Bulk Edit", we would handle this differently (e.g. SQL UPDATE generation).
+        fetch_query = f"SELECT * FROM {target_table} LIMIT 50"
+        current_rows = await db_manager.fetch_data(fetch_query)
 
-    logger.info(
-        "Apply-change called | table=%s | temp=%s | prompt=%s | has_current_table=%s | has_current_dataset=%s",
-        table_name,
-        temperature,
-        user_prompt[:200],
-        current_table is not None,
-        current_dataset is not None,
-    )
+        if not current_rows:
+            # If table is empty, we pass an empty list, LLM might generate new rows.
+            current_rows = []
 
-    # ---- DUMMY GENERATION LOGIC ----
-    # For now just return 3 synthetic rows for the requested table.
-    # Replace this with your LLM / business logic.
-    new_rows = _make_dummy_rows(table_name, user_prompt)
+        # 2. Run LLM Transformation
+        new_rows = await run_apply_change_flow(current_rows, target_prompt)
 
-    # If you want to sometimes return the WHOLE dataset, build it here:
-    #   generated = { "Restaurants": new_rows, "Orders": [...], ... }
-    # For single-table patch (what the frontend expects by default), return just one key:
-    generated = {table_name: new_rows}
+        # 3. Return Preview
+        # The frontend expects { "generated_text": { "TableName": [rows] } }
+        return {"generated_text": {target_table: new_rows}}
 
-    return {"generated_text": generated}
+    except Exception as e:
+        logger.error(f"Apply Change Error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/talk-to-data")
+async def talk_to_data(
+        db_manager: DBManagerDep,
+        payload: NLQRequest
+):
+    """
+    Natural Language to SQL.
+    User Question -> SQL -> Results
+    """
+    try:
+        logger.info(f"Received NLQ Request: {payload.user_prompt}")
+
+        result = await run_natural_language_query_flow(payload.user_prompt, db_manager)
+
+        # Result contains {"sql": "...", "results": [...]}
+        return result
+
+    except Exception as e:
+        logger.error(f"Talk to Data Error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

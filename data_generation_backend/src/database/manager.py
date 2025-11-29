@@ -77,17 +77,23 @@ class DBManager:
 
         async with self.async_session_factory() as session:
             try:
-                # We assume all dicts in the list have the same keys
-                keys = data[0].keys()
-                columns = ", ".join(keys)
-                placeholders = ", ".join([f":{key}" for key in keys])
+                # 1. Normalize data: Ensure all rows have the same keys (union of all keys)
+                all_keys = set().union(*(d.keys() for d in data))
+                normalized_data = []
+                for row in data:
+                    new_row = {k: row.get(k, None) for k in all_keys}
+                    normalized_data.append(new_row)
+
+                # 2. Prepare SQL
+                columns = ", ".join(all_keys)
+                placeholders = ", ".join([f":{key}" for key in all_keys])
 
                 # Construct raw SQL insert
                 sql = text(f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})")
 
                 async with session.begin():
                     # SQLAlchemy handles list of dicts as bulk insert automatically
-                    await session.execute(sql, data)
+                    await session.execute(sql, normalized_data)
 
                 logger.info(f"Inserted {len(data)} rows into {table_name}")
                 return True
