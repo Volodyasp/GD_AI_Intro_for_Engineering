@@ -36,7 +36,7 @@ async def generate_data(
                 {"temperature": temperature} if temperature is not None else None
             ),
         )
-        response: GenerateDataOutput = await run_generate_data_flow(flow_input)
+        response: GenerateDataOutput = await run_generate_data_flow(flow_input, db_manager)
         return response
 
     except HTTPException as e:
