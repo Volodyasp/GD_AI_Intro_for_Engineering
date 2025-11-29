@@ -1,5 +1,6 @@
 import logging
 from fastapi import FastAPI
+from contextlib import asynccontextmanager
 
 from sessions.manager import RedisSessionManager
 from database.manager import DBManager
@@ -23,8 +24,11 @@ def get_db_manager():
     return db_manager
 
 
-def get_lifespan(app: FastAPI):
+@asynccontextmanager
+async def get_lifespan(app: FastAPI):
     app.state.session_manager = get_session_manager()
     app.state.db_manager = get_db_manager()
+
     yield
-    pass
+
+    await app.state.db_manager.engine.dispose()
