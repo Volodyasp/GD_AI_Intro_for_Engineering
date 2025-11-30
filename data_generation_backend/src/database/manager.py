@@ -64,24 +64,27 @@ class DBManager:
                 return True
             except SQLAlchemyError as e:
                 logger.error(f"DDL Execution failed: {e}")
-                # Transaction is automatically rolled back by the context manager on error
                 raise e
 
     def _convert_value(self, value: Any) -> Any:
         """
-        Helper to convert ISO format strings into Python datetime/date objects.
-        asyncpg is strict about types for TIMESTAMP/DATE columns.
+        Helper to convert strings into Python objects (datetime, date, bool).
         """
         if isinstance(value, str):
-            # Check for Datetime (ISO format often includes 'T' or space + colon)
+            # Check for Boolean (Common issue with LLM generation)
+            if value.upper() == 'TRUE':
+                return True
+            if value.upper() == 'FALSE':
+                return False
+
+            # Check for Datetime
             if "T" in value or (":" in value and " " in value):
                 try:
-                    # Attempt to parse standard ISO format
                     return datetime.fromisoformat(value)
                 except ValueError:
                     pass
 
-            # Check for Date (YYYY-MM-DD)
+            # Check for Date
             if len(value) == 10 and value.count("-") == 2:
                 try:
                     return date.fromisoformat(value)
@@ -90,23 +93,20 @@ class DBManager:
         return value
 
     async def insert_data(self, table_name: str, data: List[Dict[str, Any]]) -> bool:
-        """
-        Dynamically inserts a list of dictionaries into the specified table.
-        """
+        """Dynamically inserts a list of dictionaries into the specified table."""
         if not data:
             logger.warning(f"No data provided for table {table_name}")
             return False
 
         async with self.async_session_factory() as session:
             try:
-                # 1. Normalize data: Ensure all rows have the same keys and correct types
+                # 1. Normalize data
                 all_keys = set().union(*(d.keys() for d in data))
                 normalized_data = []
                 for row in data:
                     new_row = {}
                     for k in all_keys:
                         raw_value = row.get(k, None)
-                        # Apply type conversion for dates/datetimes
                         new_row[k] = self._convert_value(raw_value)
                     normalized_data.append(new_row)
 
@@ -114,11 +114,9 @@ class DBManager:
                 columns = ", ".join(all_keys)
                 placeholders = ", ".join([f":{key}" for key in all_keys])
 
-                # Construct raw SQL insert
                 sql = text(f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})")
 
                 async with session.begin():
-                    # SQLAlchemy handles list of dicts as bulk insert automatically
                     await session.execute(sql, normalized_data)
 
                 logger.info(f"Inserted {len(data)} rows into {table_name}")
@@ -127,14 +125,30 @@ class DBManager:
                 logger.error(f"Insert failed for {table_name}: {e}")
                 raise e
 
-    async def fetch_data(self, query: str) -> List[Dict[str, Any]]:
+    async def replace_data(self, table_name: str, data: List[Dict[str, Any]]) -> bool:
         """
-        Executes a SELECT query and returns list of dictionaries.
+        Truncates the table and inserts new data.
+        Used for the 'Save' functionality after editing.
         """
         async with self.async_session_factory() as session:
             try:
+                # Use TRUNCATE CASCADE to clear data (and potentially dependent data if configured)
+                # Be careful with CASCADE in production, but for synthetic data it ensures a clean slate.
+                logger.info(f"Truncating table {table_name}...")
+                await session.execute(text(f"TRUNCATE TABLE {table_name} CASCADE"))
+                await session.commit()
+            except SQLAlchemyError as e:
+                logger.error(f"Truncate failed for {table_name}: {e}")
+                return False
+
+        # Re-use insert logic
+        return await self.insert_data(table_name, data)
+
+    async def fetch_data(self, query: str) -> List[Dict[str, Any]]:
+        """Executes a SELECT query and returns list of dictionaries."""
+        async with self.async_session_factory() as session:
+            try:
                 result = await session.execute(text(query))
-                # Convert rows to dicts
                 rows = result.mappings().all()
                 return [dict(row) for row in rows]
             except SQLAlchemyError as e:
