@@ -37,8 +37,9 @@ class SaveDataRequest(BaseModel):
 def get_guardrails_manager() -> GuardrailsManager:
     return GuardrailsManager()
 
-class NLQRequest(BaseModel):
-    user_prompt: str
+# REMOVED: Redundant NLQRequest definition that was causing the error
+# class NLQRequest(BaseModel):
+#     user_prompt: str
 
 
 # --- Endpoints ---

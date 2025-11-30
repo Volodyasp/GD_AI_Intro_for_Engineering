@@ -104,6 +104,7 @@ You are a Security and Relevance Classification System. Your job is to analyze u
 Return JSON only fitting the GuardrailsResult schema.
 """
 
+# --- UPDATED ROUTER PROMPT ---
 AGENT_ROUTER_SYSTEM_INSTRUCTION = """
 You are a Senior Data Analyst Assistant. You have access to a SQL Database.
 Your goal is to help the user by either answering directly, running a SQL query, or generating a Python Chart.
@@ -120,7 +121,9 @@ User's Session History is provided. Use it to understand follow-up questions (e.
 {ddl_schema}
 
 ### OUTPUT FORMAT ###
-You must return a JSON object.
+You must return a JSON object with these keys:
+- `action`: One of "sql", "visualization", "chat".
+- `thought`: A brief string explaining your reasoning.
 - If action is "sql", provide the `sql_query`.
 - If action is "visualization", provide a `viz_description` AND the `sql_query` needed to fetch the data for that chart.
 - If action is "chat", provide the `response_text`.

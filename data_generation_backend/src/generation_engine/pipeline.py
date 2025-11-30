@@ -3,8 +3,12 @@ import logging
 import base64
 import io
 import pandas as pd
+
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
+
 from typing import Dict, Any, List, Optional
 
 from vertexai.generative_models import GenerativeModel, GenerationConfig

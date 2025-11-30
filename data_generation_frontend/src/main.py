@@ -53,16 +53,16 @@ def ensure_session_state():
     ss = st.session_state
     ss.setdefault("dataframes", {})
     ss.setdefault("tables", [])
-    ss.setdefault("last_sql", "")
-    ss.setdefault("last_nlq_results", [])
     ss.setdefault("generation_params", {"temperature": 0.2, "max_tokens": 8192})
     ss.setdefault("last_request", {})
     ss.setdefault("last_response", None)
-    ss.setdefault("show_backend_raw", False)
     ss.setdefault("apply_prompt", "")
-    # New state for previewing changes
     ss.setdefault("preview_change_df", None)
     ss.setdefault("preview_change_table", None)
+
+    # Chat specific state
+    ss.setdefault("messages", [{"role": "assistant",
+                                "content": "Hello! I am your Data Assistant. Load some data, then ask me questions about it, or ask me to visualize it."}])
 
 
 ensure_session_state()
@@ -124,14 +124,11 @@ def build_preview_from_backend(resp_dict: dict, selected_table: Optional[str] = 
             st.session_state.preview_table = tables[0] if tables else None
         return True
     elif selected_table and selected_table in dataset:
-        # Special case for Apply Change: Don't update main DF yet, return the preview
         rows = dataset[selected_table]
         try:
             df = pd.DataFrame(rows)
         except Exception:
             df = pd.json_normalize(rows)
-
-        # Store in temporary preview state
         st.session_state.preview_change_df = df
         st.session_state.preview_change_table = selected_table
         return True
@@ -168,6 +165,37 @@ def _render_emoji_loader(style: str = "bike"):
         """,
         unsafe_allow_html=True,
     )
+
+
+# ---------- Chat Rendering Helper ----------
+def display_chat_message(message):
+    with st.chat_message(message["role"]):
+        # 1. Display Text
+        if message.get("content"):
+            st.markdown(message["content"])
+
+        # 2. Display SQL (if agent returned it)
+        if message.get("sql"):
+            with st.expander("Show SQL Query"):
+                st.code(message["sql"], language="sql")
+
+        # 3. Display Data (if agent returned rows)
+        if message.get("data"):
+            # It might be a list of dicts, convert to DF
+            try:
+                df_res = pd.DataFrame(message["data"])
+                st.dataframe(df_res, use_container_width=True)
+            except Exception:
+                st.write(message["data"])
+
+        # 4. Display Image (if agent returned base64 image)
+        if message.get("image"):
+            # Decode base64
+            try:
+                image_data = base64.b64decode(message["image"])
+                st.image(image_data, caption="Generated Visualization")
+            except Exception as e:
+                st.error(f"Failed to load image: {e}")
 
 
 # ==========================================
@@ -209,8 +237,6 @@ if nav == "Data Generation":
     # --- ACTION: GENERATE ---
     if st.button("Generate", type="primary", use_container_width=True):
         st.session_state.generation_params["temperature"] = float(temperature)
-
-        # Clear any previous edits
         st.session_state.preview_change_df = None
         st.session_state.preview_change_table = None
 
@@ -264,43 +290,26 @@ if nav == "Data Generation":
             selected_table = st.selectbox("Select Table", options=st.session_state.tables, label_visibility="collapsed",
                                           key="preview_table")
 
-        # --- CHECK FOR PENDING CHANGES ---
-        # If we have a pending change for THIS table, show comparison or just the new one
         if st.session_state.preview_change_df is not None and st.session_state.preview_change_table == selected_table:
             st.warning(f"⚠️ You have unsaved changes for table: {selected_table}")
             st.info("Review the modified data below. Click 'Save' to commit to database or 'Revert' to discard.")
-
             st.dataframe(st.session_state.preview_change_df, use_container_width=True)
 
             c1, c2 = st.columns(2)
             if c1.button("✅ Save Changes", type="primary", use_container_width=True):
                 with st.spinner("Saving changes to database..."):
                     try:
-                        # Convert DF back to list of dicts
-                        # Handle dates by converting to ISO strings if needed, or let JSON encoder handle simple types
-                        # Pydantic in backend expects JSON-compatible dicts
                         save_data = st.session_state.preview_change_df.to_dict(orient="records")
-
-                        # Handle potential timestamp objects that pandas might have preserved
-                        # (Simpler to rely on pandas json serialization and reload)
                         save_data_json = json.loads(
                             st.session_state.preview_change_df.to_json(orient="records", date_format="iso"))
-
-                        payload = {
-                            "table_name": selected_table,
-                            "data": save_data_json
-                        }
-
+                        payload = {"table_name": selected_table, "data": save_data_json}
                         resp = requests.post(SAVE_DATA_ENDPOINT, json=payload, timeout=60)
                         resp.raise_for_status()
-
-                        # Success: Update main state and clear preview
                         st.session_state.dataframes[selected_table] = st.session_state.preview_change_df
                         st.session_state.preview_change_df = None
                         st.session_state.preview_change_table = None
                         st.toast("Changes saved successfully!", icon="💾")
                         st.rerun()
-
                     except Exception as e:
                         st.error(f"Failed to save data: {e}")
 
@@ -311,25 +320,18 @@ if nav == "Data Generation":
                 st.rerun()
 
         else:
-            # Show Standard Data
             df = st.session_state.dataframes.get(st.session_state.preview_table, pd.DataFrame())
             st.dataframe(df, use_container_width=True)
 
             if st.session_state.dataframes:
                 zip_bytes = convert_dfs_to_zip(st.session_state.dataframes)
-                st.download_button(
-                    label="⬇️ Download All Tables (ZIP)",
-                    data=zip_bytes,
-                    file_name="generated_data.zip",
-                    mime="application/zip",
-                )
+                st.download_button(label="⬇️ Download All Tables (ZIP)", data=zip_bytes, file_name="generated_data.zip",
+                                   mime="application/zip")
 
-            # --- APPLY CHANGE FORM ---
             st.markdown(f"#### Edit Table: *{st.session_state.preview_table}*")
             with st.form(key="apply_change_form", clear_on_submit=False):
                 st.text_area("Describe how to modify this table...", key="apply_prompt", height=80)
                 submitted = st.form_submit_button("Preview Changes")
-
                 if submitted:
                     prompt = (st.session_state.get("apply_prompt") or "").strip()
                     if not prompt:
@@ -339,23 +341,16 @@ if nav == "Data Generation":
                                        expanded=True) as status:
                             render_activity_loader(LOADER_STYLE)
                             try:
-                                payload = {
-                                    "table_name": st.session_state.preview_table,
-                                    "user_prompt": prompt,
-                                }
-                                # Use data=payload for Form Data
+                                payload = {"table_name": st.session_state.preview_table, "user_prompt": prompt}
                                 resp = requests.post(APPLY_CHANGE_ENDPOINT, data=payload, timeout=90)
                                 resp.raise_for_status()
-                                resp_json = resp.json()
-
-                                ok = build_preview_from_backend(resp_json,
+                                ok = build_preview_from_backend(resp.json(),
                                                                 selected_table=st.session_state.preview_table)
                                 if not ok:
                                     st.error("Could not parse response.")
                                 else:
                                     status.update(label="Preview generated", state="complete", expanded=False)
                                     st.rerun()
-
                             except Exception as e:
                                 status.update(label="Request failed", state="error")
                                 st.error(f"Error: {e}")
@@ -364,33 +359,62 @@ if nav == "Data Generation":
 # TAB 2: TALK TO YOUR DATA
 # ---------------------------------------------------------------------
 else:
-    st.markdown("### Ask a question about your data")
-    q = st.text_input("Ask in natural language", key="nlq", label_visibility="collapsed")
-    colb1, colb2 = st.columns([1, 6])
-    run_q = colb1.button("Run Query", type="primary")
+    st.markdown("### 💬 Chat with your Data")
 
-    if run_q and not st.session_state.tables:
-        st.warning("Please generate data first.")
-    elif run_q and q:
-        with st.status("Querying...", state="running") as status:
-            try:
-                payload = {"user_prompt": q}
-                resp = requests.post(TALK_ENDPOINT, json=payload, timeout=60)
-                resp.raise_for_status()
-                result = resp.json()
-                st.session_state.last_sql = result.get("sql", "-- No SQL")
-                st.session_state.last_nlq_results = result.get("results", [])
-                status.update(label="Done", state="complete")
-            except Exception as e:
-                status.update(label="Error", state="error")
-                st.error(f"Failed to query: {e}")
+    if not st.session_state.tables:
+        st.warning(
+            "⚠️ No data generated yet! Please go to the 'Data Generation' tab first to create a database schema and data.")
 
-    if st.session_state.get("last_sql"):
-        st.markdown("#### Generated SQL")
-        st.code(st.session_state.last_sql, language="sql")
-        st.markdown("#### Result")
-        results = st.session_state.get("last_nlq_results", [])
-        if results:
-            st.dataframe(pd.DataFrame(results), use_container_width=True)
-        else:
-            st.info("Query returned no results.")
+    # Display Chat History
+    for msg in st.session_state.messages:
+        display_chat_message(msg)
+
+    # Chat Input
+    if prompt := st.chat_input("Ask a question about your data..."):
+        # 1. Add User Message
+        user_msg = {"role": "user", "content": prompt}
+        st.session_state.messages.append(user_msg)
+        display_chat_message(user_msg)
+
+        # 2. Call Backend
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                try:
+                    # Prepare history for backend (only role/content needed)
+                    history_payload = [
+                        {"role": m["role"], "content": m["content"]}
+                        for m in st.session_state.messages if m["role"] != "system"
+                    ]
+
+                    payload = {
+                        "user_prompt": prompt,
+                        "chat_history": history_payload
+                    }
+
+                    response = requests.post(TALK_ENDPOINT, json=payload, timeout=60)
+                    response.raise_for_status()
+                    agent_res = response.json()
+
+                    # 3. Parse & Add Assistant Message
+                    # The backend returns: type, text, sql, data, image
+                    assistant_msg = {
+                        "role": "assistant",
+                        "content": agent_res.get("text", ""),
+                        "sql": agent_res.get("sql"),
+                        "data": agent_res.get("data"),
+                        "image": agent_res.get("image")
+                    }
+
+                    # If type is error, maybe prepend an emoji
+                    if agent_res.get("type") == "error":
+                        assistant_msg["content"] = f"⚠️ {assistant_msg['content']}"
+
+                    st.session_state.messages.append(assistant_msg)
+
+                    # Force a rerun to render the new message properly at the bottom
+                    st.rerun()
+
+                except requests.exceptions.ConnectionError:
+                    st.error("Could not connect to backend.")
+                except Exception as e:
+                    st.error(f"An error occurred: {e}")
