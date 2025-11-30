@@ -1,15 +1,18 @@
 import logging
 from typing import Optional, List, Any, Dict
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Body, Request
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Body, Request, Depends
 from pydantic import BaseModel
 
 from generation_engine.base import GenerateDataOutput, GenerateDataInput
 from generation_engine.pipeline import (
     run_generate_data_flow,
     run_apply_change_flow,
-    run_natural_language_query_flow
+    run_chat_agent_flow
 )
+from generation_engine.models import NLQRequest, AgentResponse
+from generation_engine.guardrails import GuardrailsManager
+
 from dependencies import SessionManagerDep, DBManagerDep
 from utils.file_processing import read_data_schema_file
 
@@ -29,6 +32,10 @@ class ApplyChangeRequest(BaseModel):
 class SaveDataRequest(BaseModel):
     table_name: str
     data: List[Dict[str, Any]]
+
+# --- Dependency ---
+def get_guardrails_manager() -> GuardrailsManager:
+    return GuardrailsManager()
 
 class NLQRequest(BaseModel):
     user_prompt: str
@@ -123,14 +130,20 @@ async def save_data(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/talk-to-data")
+@router.post("/api/talk-to-data", response_model=AgentResponse)
 async def talk_to_data(
         db_manager: DBManagerDep,
-        payload: NLQRequest
+        payload: NLQRequest,
+        guardrails: GuardrailsManager = Depends(get_guardrails_manager)
 ):
     try:
-        logger.info(f"Received NLQ Request: {payload.user_prompt}")
-        result = await run_natural_language_query_flow(payload.user_prompt, db_manager)
+        logger.info(f"Received Agent Request: {payload.user_prompt}")
+        result = await run_chat_agent_flow(
+            user_prompt=payload.user_prompt,
+            chat_history=payload.chat_history,
+            db_manager=db_manager,
+            guardrails=guardrails
+        )
         return result
     except Exception as e:
         logger.error(f"Talk to Data Error: {e}", exc_info=True)
