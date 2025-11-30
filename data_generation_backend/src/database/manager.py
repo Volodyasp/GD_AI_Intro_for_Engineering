@@ -1,6 +1,7 @@
 import os
 import logging
 from typing import List, Dict, Any, Optional
+from datetime import datetime, date
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -53,7 +54,6 @@ class DBManager:
                 # We wrap the execution in a transaction
                 async with session.begin():
                     # Simple split by semicolon to handle multiple CREATE TABLE statements
-                    # Note: This is a basic split; complex SQL with semicolons in strings might need a stronger parser
                     statements = [s.strip() for s in ddl_script.split(';') if s.strip()]
 
                     for stmt in statements:
@@ -67,6 +67,28 @@ class DBManager:
                 # Transaction is automatically rolled back by the context manager on error
                 raise e
 
+    def _convert_value(self, value: Any) -> Any:
+        """
+        Helper to convert ISO format strings into Python datetime/date objects.
+        asyncpg is strict about types for TIMESTAMP/DATE columns.
+        """
+        if isinstance(value, str):
+            # Check for Datetime (ISO format often includes 'T' or space + colon)
+            if "T" in value or (":" in value and " " in value):
+                try:
+                    # Attempt to parse standard ISO format
+                    return datetime.fromisoformat(value)
+                except ValueError:
+                    pass
+
+            # Check for Date (YYYY-MM-DD)
+            if len(value) == 10 and value.count("-") == 2:
+                try:
+                    return date.fromisoformat(value)
+                except ValueError:
+                    pass
+        return value
+
     async def insert_data(self, table_name: str, data: List[Dict[str, Any]]) -> bool:
         """
         Dynamically inserts a list of dictionaries into the specified table.
@@ -77,11 +99,15 @@ class DBManager:
 
         async with self.async_session_factory() as session:
             try:
-                # 1. Normalize data: Ensure all rows have the same keys (union of all keys)
+                # 1. Normalize data: Ensure all rows have the same keys and correct types
                 all_keys = set().union(*(d.keys() for d in data))
                 normalized_data = []
                 for row in data:
-                    new_row = {k: row.get(k, None) for k in all_keys}
+                    new_row = {}
+                    for k in all_keys:
+                        raw_value = row.get(k, None)
+                        # Apply type conversion for dates/datetimes
+                        new_row[k] = self._convert_value(raw_value)
                     normalized_data.append(new_row)
 
                 # 2. Prepare SQL

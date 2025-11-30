@@ -1,5 +1,5 @@
+from typing import Annotated  # <--- FIXED IMPORT
 from fastapi import Depends, Request
-from sqlalchemy.sql.annotation import Annotated
 
 from sessions.manager import RedisSessionManager
 from database.manager import DBManager

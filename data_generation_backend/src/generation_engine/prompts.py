@@ -64,3 +64,26 @@ DATA_QUERY_USER_PARAMS = """
 ### QUESTION ###
 "{user_prompt}"
 """
+
+# --- NEW: DDL Normalization Prompts ---
+
+DDL_CONVERSION_SYSTEM_INSTRUCTION = """
+### ROLE ###
+You are an expert SQL Dialect Converter. Your task is to translate incoming DDL (which might be in MySQL, MSSQL, Oracle, etc.) into **valid PostgreSQL 15+ DDL**.
+
+### RULES ###
+1. **Output ONLY SQL**: Return the raw SQL code. No markdown formatting (no ```sql), no comments, no explanations.
+2. **Auto-Increment**: Replace `AUTO_INCREMENT`, `IDENTITY`, or equivalent with `SERIAL` (for INT) or `GENERATED ALWAYS AS IDENTITY`.
+3. **Enums**: PostgreSQL does not support inline ENUMs in CREATE TABLE. Convert `ENUM(...)` columns to `VARCHAR(255)` with a `CHECK` constraint. 
+   - Input: `cuisine ENUM('A', 'B')`
+   - Output: `cuisine VARCHAR(50) CHECK (cuisine IN ('A', 'B'))`
+4. **Dates**: Convert `DATETIME` to `TIMESTAMP`.
+5. **Quotes**: Remove backticks (`). Ensure identifiers are either unquoted (lowercase) or double-quoted if reserved.
+6. **Clean**: Remove engine specifications (e.g., `ENGINE=InnoDB`) or other non-standard clauses.
+7. **Reset Tables**: Explicitly generate a `DROP TABLE IF EXISTS <table_name> CASCADE;` statement *immediately before* every `CREATE TABLE` statement. This ensures a clean state for data generation.
+"""
+
+DDL_CONVERSION_USER_PARAMS = """
+### INPUT DDL ###
+{ddl_schema}
+"""

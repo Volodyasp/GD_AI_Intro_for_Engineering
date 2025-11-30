@@ -15,9 +15,6 @@ from utils.file_processing import read_data_schema_file
 
 logger = logging.getLogger(__name__)
 
-# Note: Adjust the import path for your specific project structure if necessary
-# Currently assuming this file is imported by main.py via dynamic import
-
 router = APIRouter(prefix="/data-generation-engine")
 
 
@@ -56,15 +53,14 @@ async def generate_data(
         # (Basic heuristic: checks for CREATE TABLE)
         if not ddl_content and "CREATE TABLE" in user_prompt.upper():
             logger.info("No file uploaded, but DDL found in user prompt.")
-            # We assume the prompt is the DDL in this edge case, or mixed.
-            # Ideally, we'd want a separate text area for DDL, but this works for simple usage.
             pass
 
-            # 2. Build Input Object
+        # 2. Build Input Object
         flow_input = GenerateDataInput(
             user_prompt=user_prompt,
             ddl_schema=ddl_content,
-            model_config={"temperature": temperature}
+            # UPDATED: Use llm_config
+            llm_config={"temperature": temperature}
         )
 
         # 3. Run Pipeline
@@ -110,7 +106,6 @@ async def data_apply_change(
 
         # 1. Fetch Current Data Context
         # We limit the context to 50 rows to avoid token limits, assuming the user wants to see a preview of changes.
-        # In a production "Bulk Edit", we would handle this differently (e.g. SQL UPDATE generation).
         fetch_query = f"SELECT * FROM {target_table} LIMIT 50"
         current_rows = await db_manager.fetch_data(fetch_query)
 
