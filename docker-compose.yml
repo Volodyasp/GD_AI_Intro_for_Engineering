@@ -10,6 +10,9 @@ services:
       - data_generation_backend/.env
     ports:
       - "8600:8600"
+    depends_on:
+      - postgres
+      - redis
 
   data-generation-frontend:
     container_name: data-generation-frontend
@@ -34,10 +37,15 @@ services:
       POSTGRES_DB: postgres
     ports:
       - "5432:5432"
+    volumes:
+       - postgres_data:/var/lib/postgresql/data
 
   redis:
     image: redis:latest
     container_name: redis
     restart: always
     ports:
-      - "6379:6379" # Expose Redis port
+      - "6379:6379"
+
+volumes:
+  postgres_data:
