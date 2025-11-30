@@ -83,13 +83,13 @@ async def generate_data(
 
 @router.post("/api/data-apply-change")
 async def data_apply_change(
-        request: Request,
-        db_manager: DBManagerDep,
-        # Support Form Data (Streamlit default)
-        table_name: Optional[str] = Form(None),
-        user_prompt: Optional[str] = Form(None),
-        # Support JSON Body (Standard API usage)
-        payload: Optional[ApplyChangeRequest] = Body(None)
+    request: Request,
+    db_manager: DBManagerDep,
+    # Support Form Data (Streamlit default)
+    table_name: Optional[str] = Form(None),
+    user_prompt: Optional[str] = Form(None),
+    # Support JSON Body (Standard API usage)
+    payload: Optional[ApplyChangeRequest] = Body(None)
 ):
     """
     Modifies existing data based on user instructions.
@@ -105,21 +105,21 @@ async def data_apply_change(
         logger.info(f"Applying change to table '{target_table}' with prompt: {target_prompt}")
 
         # 1. Fetch Current Data Context
-        # We limit the context to 50 rows to avoid token limits, assuming the user wants to see a preview of changes.
         fetch_query = f"SELECT * FROM {target_table} LIMIT 50"
         current_rows = await db_manager.fetch_data(fetch_query)
 
         if not current_rows:
-            # If table is empty, we pass an empty list, LLM might generate new rows.
             current_rows = []
 
         # 2. Run LLM Transformation
         new_rows = await run_apply_change_flow(current_rows, target_prompt)
 
         # 3. Return Preview
-        # The frontend expects { "generated_text": { "TableName": [rows] } }
         return {"generated_text": {target_table: new_rows}}
 
+    # ADDED: Catch HTTPException separately so 400s aren't converted to 500s
+    except HTTPException as e:
+        raise e
     except Exception as e:
         logger.error(f"Apply Change Error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

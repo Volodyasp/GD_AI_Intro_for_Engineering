@@ -357,9 +357,9 @@ if nav == "Data Generation":
                                 "table_name": st.session_state.preview_table,
                                 "user_prompt": prompt,
                             }
-                            # Using JSON for Apply Change as defined in refined Endpoint
-                            # But endpoint supports Form too. Let's use JSON body for cleaner complex data if needed.
-                            resp = requests.post(APPLY_CHANGE_ENDPOINT, json=payload, timeout=90)
+                            # FIXED: Use 'data=' instead of 'json=' to match backend Form parameters
+                            resp = requests.post(APPLY_CHANGE_ENDPOINT, data=payload, timeout=90)
+
                             resp.raise_for_status()
                             resp_json = resp.json()
 
