@@ -28,15 +28,17 @@ class ObservabilityManager:
     def initialize(self):
         public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
         secret_key = os.getenv("LANGFUSE_SECRET_KEY")
+        # Support both naming conventions, prioritizing the one in your .env
+        host = os.getenv("LANGFUSE_BASE_URL") or os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
 
         if LANGFUSE_AVAILABLE and public_key and secret_key:
             try:
                 self.client = Langfuse(
                     public_key=public_key,
                     secret_key=secret_key,
-                    host=os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+                    host=host
                 )
-                logger.info("Langfuse observability initialized successfully.")
+                logger.info(f"Langfuse observability initialized successfully. Host: {host}")
             except Exception as e:
                 logger.error(f"Failed to initialize Langfuse: {e}")
         else:
