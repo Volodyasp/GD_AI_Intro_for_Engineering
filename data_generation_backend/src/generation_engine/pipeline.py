@@ -15,6 +15,7 @@ from vertexai.generative_models import GenerativeModel, GenerationConfig
 from .base import GenerateDataInput, GenerateDataOutput
 from .models import AgentAction, AgentResponse, ChatMessage
 from .guardrails import GuardrailsManager
+from .embeddings import EmbeddingService
 from .prompts import (
     DATA_GENERATE_SYSTEM_INSTRUCTION, DATA_GENERATE_USER_PARAMS,
     DATA_EDIT_SYSTEM_INSTRUCTION, DATA_EDIT_USER_PARAMS,
@@ -322,8 +323,32 @@ async def run_chat_agent_flow(
     except Exception:
         schema_context = "Schema unavailable."
 
+    # --- NEW CODE: PHASE 3 VECTOR SEARCH ---
+    examples_context = ""
+    try:
+        # Initialize service
+        embedding_service = EmbeddingService()
+
+        # Get embedding for user question
+        user_vector = await embedding_service.get_embedding(user_prompt)
+
+        if user_vector:
+            # Search DB for similar SQL examples
+            similar_examples = await db_manager.search_similar_examples(user_vector, limit=3)
+
+            if similar_examples:
+                examples_context = "### RELEVANT SQL EXAMPLES ###\nUse these to understand how to join tables correctly:\n"
+                for ex in similar_examples:
+                    examples_context += f"Q: {ex['question']}\nSQL: {ex['sql_query']}\n---\n"
+                logger.info(f"Retrieved {len(similar_examples)} few-shot examples.")
+    except Exception as e:
+        logger.error(f"Vector search failed (continuing without examples): {e}")
+    # ---------------------------------------
+
     # 3. Router Decision
     model_name = CONFIG["vertex_ai"]["models"]["generate_data"].get("model_name", "gemini-2.0-flash-exp")
+
+    # We update the system instruction to acknowledge we might provide examples
     llm_router = GenerativeModel(
         model_name=model_name,
         system_instruction=AGENT_ROUTER_SYSTEM_INSTRUCTION.format(ddl_schema=schema_context)
@@ -331,7 +356,16 @@ async def run_chat_agent_flow(
 
     # Construct history context string
     history_str = "\n".join([f"{m.role}: {m.content}" for m in chat_history[-5:]])
-    router_prompt = f"Session History:\n{history_str}\n\nCurrent User Request: {user_prompt}"
+
+    # INJECT THE EXAMPLES INTO THE PROMPT
+    router_prompt = f"""
+    Session History:
+    {history_str}
+
+    {examples_context}
+
+    Current User Request: {user_prompt}
+    """
 
     try:
         logger.info("Routing user request...")
@@ -347,7 +381,7 @@ async def run_chat_agent_flow(
         logger.error(f"Router failed: {e}")
         return AgentResponse(type="error", text="Sorry, I didn't understand that.")
 
-    # 4. Handle Actions
+    # 4. Handle Actions (Logic remains exactly the same as your original code)
     if action.action == "chat":
         return AgentResponse(type="text", text=action.response_text or "I'm not sure how to respond.")
 
@@ -357,11 +391,6 @@ async def run_chat_agent_flow(
 
         try:
             results = await db_manager.fetch_data(action.sql_query)
-            # Limit result size for context window
-            summary = str(results[:5]) if results else "No results"
-
-            # Generate a summary response using the LLM (Optional, but nice)
-            # For now, just returning the data
             return AgentResponse(
                 type="sql",
                 text=action.thought,
@@ -407,7 +436,7 @@ async def run_chat_agent_flow(
                     text=f"Generated chart for: {action.viz_description}",
                     sql=action.sql_query,
                     image=b64_image,
-                    data=results  # Optional: send raw data too
+                    data=results
                 )
             else:
                 return AgentResponse(type="error", text="Failed to generate image from code.")

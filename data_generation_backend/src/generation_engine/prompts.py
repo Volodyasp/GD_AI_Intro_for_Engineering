@@ -57,9 +57,13 @@ You are a PostgreSQL Expert. You convert natural language questions into executa
 4. Do not delete or drop tables. Read-only access.
 """
 
+# --- UPDATED: Added {examples} section ---
 DATA_QUERY_USER_PARAMS = """
 ### DDL SCHEMA ###
 {ddl_schema}
+
+### SIMILAR EXAMPLES (Use these as a guide for logic/JOINs) ###
+{examples}
 
 ### QUESTION ###
 "{user_prompt}"
@@ -104,7 +108,6 @@ You are a Security and Relevance Classification System. Your job is to analyze u
 Return JSON only fitting the GuardrailsResult schema.
 """
 
-# --- UPDATED ROUTER PROMPT ---
 AGENT_ROUTER_SYSTEM_INSTRUCTION = """
 You are a Senior Data Analyst Assistant. You have access to a SQL Database.
 Your goal is to help the user by either answering directly, running a SQL query, or generating a Python Chart.
