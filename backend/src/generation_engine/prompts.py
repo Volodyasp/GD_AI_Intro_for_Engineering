@@ -7,12 +7,12 @@ You are a Synthetic Data Generator engine. Your goal is to generate realistic, r
    - The Root object keys must be the exact Table Names from the DDL.
    - The Values must be arrays of objects (rows).
    - Example: { "users": [{"id": 1, "name": "Alice"}], "orders": [{"id": 10, "user_id": 1}] }
-2. **Consistency**: 
+2. **Consistency**:
    - Respect Primary Keys (unique IDs).
    - Respect Foreign Keys (if table B references table A, table B's foreign key must exist in table A).
    - Respect Constraints (NOT NULL, CHECK, UNIQUE).
 3. **Volume**: Generate 5-10 rows per table unless specified otherwise by the user.
-4. **Data Quality**: 
+4. **Data Quality**:
    - Use realistic names, addresses, and dates.
    - Dates should be ISO 8601 strings (YYYY-MM-DDTHH:MM:SS).
 5. **No Prose**: Do not output markdown code blocks like ```json. Just the raw JSON string.
@@ -57,7 +57,7 @@ You are a PostgreSQL Expert. You convert natural language questions into executa
 4. Do not delete or drop tables. Read-only access.
 """
 
-# --- UPDATED: Added {examples} section ---
+
 DATA_QUERY_USER_PARAMS = """
 ### DDL SCHEMA ###
 {ddl_schema}
@@ -69,7 +69,6 @@ DATA_QUERY_USER_PARAMS = """
 "{user_prompt}"
 """
 
-# --- NEW: DDL Normalization Prompts ---
 
 DDL_CONVERSION_SYSTEM_INSTRUCTION = """
 ### ROLE ###
@@ -78,7 +77,7 @@ You are an expert SQL Dialect Converter. Your task is to translate incoming DDL 
 ### RULES ###
 1. **Output ONLY SQL**: Return the raw SQL code. No markdown formatting (no ```sql), no comments, no explanations.
 2. **Auto-Increment**: Replace `AUTO_INCREMENT`, `IDENTITY`, or equivalent with `SERIAL` (for INT) or `GENERATED ALWAYS AS IDENTITY`.
-3. **Enums**: PostgreSQL does not support inline ENUMs in CREATE TABLE. Convert `ENUM(...)` columns to `VARCHAR(255)` with a `CHECK` constraint. 
+3. **Enums**: PostgreSQL does not support inline ENUMs in CREATE TABLE. Convert `ENUM(...)` columns to `VARCHAR(255)` with a `CHECK` constraint.
    - Input: `cuisine ENUM('A', 'B')`
    - Output: `cuisine VARCHAR(50) CHECK (cuisine IN ('A', 'B'))`
 4. **Dates**: Convert `DATETIME` to `TIMESTAMP`.
@@ -144,7 +143,7 @@ You receive a dataset summary and a visualization description.
 4. **Logic**:
    - Create the plot using `df`.
    - Set the title based on the description.
-   - **CRITICAL**: Do NOT use `plt.show()`. 
+   - **CRITICAL**: Do NOT use `plt.show()`.
    - Instead, the code must save the plot to a BytesIO object named `buf`.
 
    Example format:
@@ -165,7 +164,7 @@ You receive a dataset summary and a visualization description.
 VIZ_CODE_GEN_USER_PARAMS = """
 ### DATA PREVIEW ###
 Columns: {columns}
-Sample Data: 
+Sample Data:
 {sample_data}
 
 ### VISUALIZATION REQUEST ###

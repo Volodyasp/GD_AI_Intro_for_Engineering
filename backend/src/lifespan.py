@@ -2,12 +2,13 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
+import redis
 from database.manager import DBManager
 from fastapi import FastAPI
 from generation_engine.embeddings import EmbeddingService
 from generation_engine.few_shot_data import FEW_SHOT_EXAMPLES
 from sessions.manager import RedisSessionManager
-from utils.observability import ObservabilityManager
+from utils.observability import check_langfuse_health
 
 logger = logging.getLogger(__name__)
 
@@ -29,16 +30,17 @@ async def periodic_readiness_check(app: FastAPI, interval: int = 30):
             except Exception as e:
                 status["services"]["database"] = f"unhealthy: {e}"
 
-            # Check Redis
+            # Check Redis (using connection pool)
             try:
-                await app.state.session_manager.redis.ping()
+                pool = app.state.session_manager.get_pool()
+                r = redis.Redis(connection_pool=pool)
+                r.ping()
                 status["services"]["redis"] = "healthy"
             except Exception as e:
                 status["services"]["redis"] = f"unhealthy: {e}"
 
             # Check Langfuse
-            observability = ObservabilityManager()
-            langfuse_health = observability.check_health()
+            langfuse_health = check_langfuse_health()
             status["services"]["langfuse"] = langfuse_health["status"]
 
             logger.info(f"Readiness check: {status}")

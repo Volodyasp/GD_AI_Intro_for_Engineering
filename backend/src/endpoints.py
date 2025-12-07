@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Dict, List, Optional
 
+import redis
 from dependencies import DBManagerDep, SessionManagerDep
 from fastapi import (
     APIRouter,
@@ -22,7 +23,7 @@ from generation_engine.pipeline import (
 )
 from pydantic import BaseModel
 from utils.file_processing import read_data_schema_file
-from utils.observability import ObservabilityManager
+from utils.observability import check_langfuse_health
 
 logger = logging.getLogger(__name__)
 
@@ -44,17 +45,18 @@ async def readiness_check(db_manager: DBManagerDep, session_manager: SessionMana
         health_status["services"]["database"] = {"status": "unhealthy", "error": str(e)}
         health_status["status"] = "degraded"
 
-    # Check Redis
+    # Check Redis (using connection pool)
     try:
-        await session_manager.redis.ping()
+        pool = session_manager.get_pool()
+        r = redis.Redis(connection_pool=pool)
+        r.ping()
         health_status["services"]["redis"] = {"status": "healthy"}
     except Exception as e:
         health_status["services"]["redis"] = {"status": "unhealthy", "error": str(e)}
         health_status["status"] = "degraded"
 
     # Check Langfuse
-    observability = ObservabilityManager()
-    langfuse_health = observability.check_health()
+    langfuse_health = check_langfuse_health()
     health_status["services"]["langfuse"] = langfuse_health
     if langfuse_health["status"] == "unhealthy":
         health_status["status"] = "degraded"

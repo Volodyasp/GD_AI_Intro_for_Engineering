@@ -52,7 +52,7 @@ def execute_generated_viz_code(code: str, df: pd.DataFrame) -> str:
         return ""
 
 
-@trace_step(name="chat_agent_flow")
+@trace_step(name="chat_agent_flow", as_type="generation")
 async def run_chat_agent_flow(
     user_prompt: str,
     chat_history: List[ChatMessage],
@@ -93,7 +93,6 @@ async def run_chat_agent_flow(
     except Exception:
         schema_context = "Schema unavailable."
 
-    # --- NEW CODE: PHASE 3 VECTOR SEARCH ---
     examples_context = ""
     try:
         # Initialize service
@@ -117,7 +116,6 @@ async def run_chat_agent_flow(
                 logger.info(f"Retrieved {len(similar_examples)} few-shot examples.")
     except Exception as e:
         logger.error(f"Vector search failed (continuing without examples): {e}")
-    # ---------------------------------------
 
     # 3. Router Decision
     model_name = CONFIG["vertex_ai"]["models"]["generate_data"].get(

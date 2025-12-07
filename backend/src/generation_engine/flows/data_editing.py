@@ -14,7 +14,7 @@ from vertexai.generative_models import GenerationConfig, GenerativeModel
 logger = logging.getLogger(__name__)
 
 
-@trace_step(name="run_apply_change_flow")
+@trace_step(name="run_apply_change_flow", as_type="generation")
 async def run_apply_change_flow(
     current_data: List[Dict[str, Any]], user_prompt: str
 ) -> List[Dict[str, Any]]:
@@ -33,7 +33,6 @@ async def run_apply_change_flow(
         temperature=0.2, response_mime_type="application/json"
     )
 
-    # --- FIX: Add default=str to handle datetime objects from DB ---
     full_prompt = DATA_EDIT_USER_PARAMS.format(
         current_data=json.dumps(current_data, default=str), user_prompt=user_prompt
     )
