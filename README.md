@@ -26,9 +26,9 @@ A simple yet powerful tool powered by **Google Gemini 2.5** that helps you gener
 ## 🛠️ Tech Stack
 
 *   **Backend:** Python 3.11, FastAPI
-*   **AI:** Google Gemini 2.5 Flash (via Vertex AI)
 *   **Database:** PostgreSQL (with `pgvector` for search)
 *   **Interface:** Streamlit (simple and clean)
+*   **Sessions:** Redis
 *   **Runner:** Docker Compose
 
 ---
