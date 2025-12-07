@@ -12,11 +12,13 @@ from generation_engine.prompts import (
     DDL_CONVERSION_SYSTEM_INSTRUCTION,
     DDL_CONVERSION_USER_PARAMS,
 )
+from utils.observability import trace_step
 from vertexai.generative_models import GenerationConfig, GenerativeModel
 
 logger = logging.getLogger(__name__)
 
 
+@trace_step(name="convert_ddl_to_postgres")
 async def convert_ddl_to_postgres(ddl_content: str) -> str:
     """
     Uses Gemini to translate incoming DDL (MySQL, Oracle, etc.)
@@ -45,6 +47,7 @@ async def convert_ddl_to_postgres(ddl_content: str) -> str:
         return ddl_content
 
 
+@trace_step(name="generate_data_flow")
 async def run_generate_data_flow(
     request: GenerateDataInput, db_manager: DBManager
 ) -> GenerateDataOutput:

@@ -8,11 +8,13 @@ from generation_engine.prompts import (
     DATA_EDIT_SYSTEM_INSTRUCTION,
     DATA_EDIT_USER_PARAMS,
 )
+from utils.observability import trace_step
 from vertexai.generative_models import GenerationConfig, GenerativeModel
 
 logger = logging.getLogger(__name__)
 
 
+@trace_step(name="run_apply_change_flow")
 async def run_apply_change_flow(
     current_data: List[Dict[str, Any]], user_prompt: str
 ) -> List[Dict[str, Any]]:
