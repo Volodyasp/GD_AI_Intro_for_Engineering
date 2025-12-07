@@ -1,27 +1,66 @@
 import logging
-from typing import Optional, List, Any, Dict
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Body, Request, Depends
-from pydantic import BaseModel
-
-from generation_engine.base import GenerateDataOutput, GenerateDataInput
-from generation_engine.pipeline import (
-    run_generate_data_flow,
-    run_apply_change_flow,
-    run_chat_agent_flow
+from dependencies import DBManagerDep, SessionManagerDep
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
 )
-from generation_engine.models import NLQRequest, AgentResponse
+from generation_engine.base import GenerateDataInput, GenerateDataOutput
 from generation_engine.guardrails import GuardrailsManager
-
-from dependencies import SessionManagerDep, DBManagerDep
+from generation_engine.models import AgentResponse, NLQRequest
+from generation_engine.pipeline import (
+    run_apply_change_flow,
+    run_chat_agent_flow,
+    run_generate_data_flow,
+)
+from pydantic import BaseModel
 from utils.file_processing import read_data_schema_file
+from utils.observability import ObservabilityManager
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/data-generation-engine")
 
 
-# --- Pydantic Models for JSON Payloads ---
+@router.get("/readiness")
+async def readiness_check(db_manager: DBManagerDep, session_manager: SessionManagerDep):
+    """
+    Readiness check endpoint that verifies connectivity to all services.
+    """
+    health_status = {"status": "healthy", "services": {}}
+
+    # Check Database
+    try:
+        await db_manager.fetch_data("SELECT 1")
+        health_status["services"]["database"] = {"status": "healthy"}
+    except Exception as e:
+        health_status["services"]["database"] = {"status": "unhealthy", "error": str(e)}
+        health_status["status"] = "degraded"
+
+    # Check Redis
+    try:
+        await session_manager.redis.ping()
+        health_status["services"]["redis"] = {"status": "healthy"}
+    except Exception as e:
+        health_status["services"]["redis"] = {"status": "unhealthy", "error": str(e)}
+        health_status["status"] = "degraded"
+
+    # Check Langfuse
+    observability = ObservabilityManager()
+    langfuse_health = observability.check_health()
+    health_status["services"]["langfuse"] = langfuse_health
+    if langfuse_health["status"] == "unhealthy":
+        health_status["status"] = "degraded"
+
+    return health_status
+
 
 class ApplyChangeRequest(BaseModel):
     table_name: str
@@ -29,28 +68,23 @@ class ApplyChangeRequest(BaseModel):
     temperature: Optional[float] = 0.2
     current_rows: Optional[List[Dict[str, Any]]] = None
 
+
 class SaveDataRequest(BaseModel):
     table_name: str
     data: List[Dict[str, Any]]
 
-# --- Dependency ---
+
 def get_guardrails_manager() -> GuardrailsManager:
     return GuardrailsManager()
 
-# REMOVED: Redundant NLQRequest definition that was causing the error
-# class NLQRequest(BaseModel):
-#     user_prompt: str
-
-
-# --- Endpoints ---
 
 @router.post("/api/generate_data")
 async def generate_data(
-        session_manager: SessionManagerDep,
-        db_manager: DBManagerDep,
-        user_prompt: str = Form(...),
-        temperature: float = Form(0.0),
-        file_schema: Optional[UploadFile] = File(default=None),
+    session_manager: SessionManagerDep,
+    db_manager: DBManagerDep,
+    user_prompt: str = Form(...),
+    temperature: float = Form(0.0),
+    file_schema: Optional[UploadFile] = File(default=None),
 ):
     try:
         ddl_content = await read_data_schema_file(file_schema)
@@ -60,10 +94,12 @@ async def generate_data(
         flow_input = GenerateDataInput(
             user_prompt=user_prompt,
             ddl_schema=ddl_content,
-            llm_config={"temperature": temperature}
+            llm_config={"temperature": temperature},
         )
 
-        response: GenerateDataOutput = await run_generate_data_flow(flow_input, db_manager)
+        response: GenerateDataOutput = await run_generate_data_flow(
+            flow_input, db_manager
+        )
 
         if not response.is_success:
             raise HTTPException(status_code=500, detail=response.error_message)
@@ -84,16 +120,21 @@ async def data_apply_change(
     db_manager: DBManagerDep,
     table_name: Optional[str] = Form(None),
     user_prompt: Optional[str] = Form(None),
-    payload: Optional[ApplyChangeRequest] = Body(None)
+    payload: Optional[ApplyChangeRequest] = Body(None),
 ):
     try:
         target_table = table_name or (payload.table_name if payload else None)
         target_prompt = user_prompt or (payload.user_prompt if payload else None)
 
         if not target_table or not target_prompt:
-            raise HTTPException(status_code=400, detail="Both 'table_name' and 'user_prompt' are required.")
+            raise HTTPException(
+                status_code=400,
+                detail="Both 'table_name' and 'user_prompt' are required.",
+            )
 
-        logger.info(f"Applying change to table '{target_table}' with prompt: {target_prompt}")
+        logger.info(
+            f"Applying change to table '{target_table}' with prompt: {target_prompt}"
+        )
 
         fetch_query = f"SELECT * FROM {target_table} LIMIT 50"
         current_rows = await db_manager.fetch_data(fetch_query)
@@ -113,10 +154,7 @@ async def data_apply_change(
 
 
 @router.post("/api/save_data")
-async def save_data(
-    db_manager: DBManagerDep,
-    payload: SaveDataRequest
-):
+async def save_data(db_manager: DBManagerDep, payload: SaveDataRequest):
     """
     Saves (Replaces) data for a specific table.
     """
@@ -124,7 +162,9 @@ async def save_data(
         logger.info(f"Saving {len(payload.data)} rows to {payload.table_name}")
         success = await db_manager.replace_data(payload.table_name, payload.data)
         if not success:
-            raise HTTPException(status_code=500, detail=f"Failed to save data to {payload.table_name}")
+            raise HTTPException(
+                status_code=500, detail=f"Failed to save data to {payload.table_name}"
+            )
         return {"status": "success", "message": "Data saved successfully"}
     except Exception as e:
         logger.error(f"Save Data Error: {e}", exc_info=True)
@@ -133,9 +173,9 @@ async def save_data(
 
 @router.post("/api/talk-to-data", response_model=AgentResponse)
 async def talk_to_data(
-        db_manager: DBManagerDep,
-        payload: NLQRequest,
-        guardrails: GuardrailsManager = Depends(get_guardrails_manager)
+    db_manager: DBManagerDep,
+    payload: NLQRequest,
+    guardrails: GuardrailsManager = Depends(get_guardrails_manager),
 ):
     try:
         logger.info(f"Received Agent Request: {payload.user_prompt}")
@@ -143,7 +183,7 @@ async def talk_to_data(
             user_prompt=payload.user_prompt,
             chat_history=payload.chat_history,
             db_manager=db_manager,
-            guardrails=guardrails
+            guardrails=guardrails,
         )
         return result
     except Exception as e:
