@@ -1,7 +1,7 @@
 import requests
 import streamlit as st
-from src.config import TALK_ENDPOINT
-from src.ui.components import display_chat_message
+from config import TALK_ENDPOINT
+from ui.components import display_chat_message
 
 
 def render_chat_tab():

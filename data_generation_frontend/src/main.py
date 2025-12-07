@@ -1,6 +1,6 @@
 import streamlit as st
-from src.tabs.chat import render_chat_tab
-from src.tabs.data_generation import render_data_generation_tab
+from tabs.chat import render_chat_tab
+from tabs.data_generation import render_data_generation_tab
 
 # ---------- Config ----------
 st.set_page_config(

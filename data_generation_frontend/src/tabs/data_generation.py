@@ -3,8 +3,8 @@ import json
 import pandas as pd
 import requests
 import streamlit as st
-from src.config import APPLY_CHANGE_ENDPOINT, GENERATE_ENDPOINT, SAVE_DATA_ENDPOINT
-from src.utils import build_preview_from_backend, convert_dfs_to_zip
+from config import APPLY_CHANGE_ENDPOINT, GENERATE_ENDPOINT, SAVE_DATA_ENDPOINT
+from utils import build_preview_from_backend, convert_dfs_to_zip
 
 
 def render_data_generation_tab():
