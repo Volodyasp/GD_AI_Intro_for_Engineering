@@ -1,3 +1,4 @@
 .idea/*
 *.env
 gcp_creds/*.json
+*.pyc
