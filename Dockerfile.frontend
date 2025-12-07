@@ -5,7 +5,7 @@ LABEL authors="vladimirsuponin"
 WORKDIR /app
 
 # Copping and installing the poetry requirements
-COPY ./data_generation_frontend/ ./
+COPY ./frontend/ ./
 
 RUN pip install --upgrade pip && \
     pip install "poetry>=2.0,<3.0" && \

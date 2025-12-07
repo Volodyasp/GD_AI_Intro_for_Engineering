@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "data-generation-backend"
+name = "backend"
 version = "0.1.0"
 description = "Backend for Synthetic Data Generation and Chat"
 authors = ["Your Name <you@example.com>"]
