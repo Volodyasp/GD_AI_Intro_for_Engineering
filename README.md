@@ -1,6 +1,6 @@
 # 🤖 AI SQL Assistant & Data Generator
 
-A simple yet powerful tool powered by **Google Gemini 2.5** that helps you generate test data for databases and query them using natural language.
+A simple tool that helps you generate test data for databases and query them using natural language.
 
 ---
 
